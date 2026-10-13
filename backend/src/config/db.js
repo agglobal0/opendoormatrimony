@@ -19,11 +19,14 @@ let pool = null;
 let isMock = false;
 let mockDb = null;
 
+const fs = require('fs');
+
 const dbConfig = dbUri ? {
   uri: dbUri,
   waitForConnections: true,
   connectionLimit: 15,
   queueLimit: 0,
+  multipleStatements: true,
   connectTimeout: 20000,
   ...(isAivenOrSsl ? { ssl: { rejectUnauthorized: false } } : {})
 } : {
@@ -35,6 +38,7 @@ const dbConfig = dbUri ? {
   waitForConnections: true,
   connectionLimit: 15,
   queueLimit: 0,
+  multipleStatements: true,
   enableKeepAlive: true,
   keepAliveInitialDelay: 0,
   connectTimeout: isCloudDb ? 20000 : 2500,
@@ -52,6 +56,43 @@ try {
   pool = mysql.createPool(dbConfig);
 } catch (err) {
   console.warn('MySQL pool initialization error, will fall back to mock store if needed:', err.message);
+}
+
+async function autoInitSchemaIfNeeded() {
+  if (isMock || !pool) return;
+  try {
+    const [rows] = await pool.query("SELECT COUNT(*) as cnt FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'users'");
+    if (rows && rows[0] && rows[0].cnt > 0) {
+      console.log('✓ Database tables verified.');
+      return;
+    }
+    console.log('⚡ Initializing database schema on cloud MySQL...');
+    const schemaPath = path.join(__dirname, '../../database/schema.sql');
+    const fallbackPath = path.join(__dirname, '../../../database/schema.sql');
+    const actualSchema = fs.existsSync(schemaPath) ? schemaPath : (fs.existsSync(fallbackPath) ? fallbackPath : null);
+    
+    if (actualSchema) {
+      let sql = fs.readFileSync(actualSchema, 'utf8')
+        .replace(/CREATE DATABASE[\s\S]*?;/gi, '')
+        .replace(/USE\s+`?tod_matrimony`?\s*;/gi, '')
+        .replace(/USE\s+`?defaultdb`?\s*;/gi, '');
+      await pool.query(sql);
+      console.log('✓ Schema created successfully!');
+    }
+
+    const seedPath = path.join(__dirname, '../../database/seed.sql');
+    const fallbackSeed = path.join(__dirname, '../../../database/seed.sql');
+    const actualSeed = fs.existsSync(seedPath) ? seedPath : (fs.existsSync(fallbackSeed) ? fallbackSeed : null);
+    if (actualSeed) {
+      let seedSql = fs.readFileSync(actualSeed, 'utf8')
+        .replace(/USE\s+`?tod_matrimony`?\s*;/gi, '')
+        .replace(/USE\s+`?defaultdb`?\s*;/gi, '');
+      await pool.query(seedSql);
+      console.log('✓ Seed data inserted into cloud database!');
+    }
+  } catch (err) {
+    console.warn('Auto-init note (tables may already exist):', err.message);
+  }
 }
 
 async function query(sql, params = []) {
@@ -86,7 +127,8 @@ async function testConnection() {
     if (isMock) {
       console.log('✓ Running on High-Performance In-Memory Relational Engine (40+ seed profiles ready).');
     } else {
-      console.log('✓ Connected to MySQL database:', dbConfig.database);
+      console.log('✓ Connected to MySQL database:', dbConfig.database || 'defaultdb');
+      await autoInitSchemaIfNeeded();
     }
     return true;
   } catch (err) {
