@@ -1,0 +1,39 @@
+# Node dependencies
+node_modules/
+*/node_modules/
+frontend/node_modules/
+backend/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+frontend/.env
+frontend/.env.*
+
+# Build artifacts
+dist/
+frontend/dist/
+build/
+.cache/
+*.timestamp-*.mjs
+frontend/*.timestamp-*.mjs
+
+# Uploads & Temp
+uploads/*
+!uploads/.gitkeep
+backend/uploads/*
+!backend/uploads/.gitkeep
+scratch/
+.tempmediaStorage/
+
+# OS and IDE files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
